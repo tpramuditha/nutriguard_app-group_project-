@@ -1,0 +1,41 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "nutriguard-18dbd",
+          "appId": "1:128290901208:android:6b189d5a8ea7c67332dbad",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "nutriguard-18dbd",
+          "configurations": {
+            "android": "1:128290901208:android:6b189d5a8ea7c67332dbad",
+            "ios": "1:128290901208:ios:afd5583beaa27e8d32dbad",
+            "macos": "1:128290901208:ios:afd5583beaa27e8d32dbad",
+            "web": "1:128290901208:web:fe1646838f6b9b6e32dbad",
+            "windows": "1:128290901208:web:e53d05bf01db3e4b32dbad"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "database": "(default)",
+    "location": "asia-south1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
+    "singleProjectMode": true
+  }
+}

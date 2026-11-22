@@ -1,0 +1,11 @@
+
+# Private API keys and environment variables
+.env
+.env.*
+!.env.example
+
+# Installed Node.js packages
+node_modules/
+
+# Logs
+*.log

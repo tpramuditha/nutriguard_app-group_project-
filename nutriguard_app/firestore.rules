@@ -1,0 +1,819 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId}/healthReports/{reportId} {
+
+      function isOwner() {
+        return request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      // Validate an individual laboratory measurement.
+      function validMeasurement(m) {
+        return m is map
+          && m.keys().hasAll([
+            'name',
+            'value',
+            'unit'
+          ])
+          && m.keys().hasOnly([
+            'name',
+            'value',
+            'unit'
+          ])
+          && m.name is string
+          && m.name.size() > 0
+          && m.name.size() <= 100
+          && m.value is number
+          && m.value >= -1000000000
+          && m.value <= 1000000000
+          && m.unit is string
+          && m.unit.size() > 0
+          && m.unit.size() <= 40;
+      }
+
+      // Check every measurement in the supported list.
+      function validMeasurements(items) {
+        return items is list
+          && items.size() > 0
+          && items.size() <= 10
+          && validMeasurement(items[0])
+          && (items.size() < 2 || validMeasurement(items[1]))
+          && (items.size() < 3 || validMeasurement(items[2]))
+          && (items.size() < 4 || validMeasurement(items[3]))
+          && (items.size() < 5 || validMeasurement(items[4]))
+          && (items.size() < 6 || validMeasurement(items[5]))
+          && (items.size() < 7 || validMeasurement(items[6]))
+          && (items.size() < 8 || validMeasurement(items[7]))
+          && (items.size() < 9 || validMeasurement(items[8]))
+          && (items.size() < 10 || validMeasurement(items[9]));
+      }
+
+      function validReport() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'reportType',
+            'reportName',
+            'reportDate',
+            'measurements'
+          ])
+          && data.keys().hasOnly([
+            'reportType',
+            'reportName',
+            'reportDate',
+            'measurements'
+          ])
+          && data.reportType is string
+          && data.reportType.size() > 0
+          && data.reportType.size() <= 100
+          && data.reportName is string
+          && data.reportName.size() > 0
+          && data.reportName.size() <= 150
+          && data.reportDate is string
+          && data.reportDate.size() > 0
+          && data.reportDate.size() <= 40
+          && validMeasurements(data.measurements);
+      }
+
+      // Authenticated owners can read their reports.
+      allow read: if isOwner();
+
+      // Owners can write only correctly structured reports.
+      allow create, update: if isOwner() && validReport();
+
+      // Only owners can delete their reports.
+      allow delete: if isOwner();
+    }
+
+
+    // NutriGuard monthly health markers
+    match /users/{userId}/monthlyHealthMarkers/{monthId} {
+
+      function isMarkerOwner() {
+        return request.auth != null
+          && request.auth.uid == userId;
+      }
+
+
+function validMarkerMeasurement(m) {
+  return m is map
+    && m.keys().hasAll(['name', 'value', 'unit'])
+    && m.keys().hasOnly(['name', 'value', 'unit'])
+    && m.name is string
+    && m.name.matches(
+      '^(Total Cholesterol|LDL Cholesterol|HDL Cholesterol|Triglycerides|(Fasting|Random|After Meal) Blood Glucose|(Systolic|Diastolic) Blood Pressure)$'
+    )
+    && m.value is number
+    && m.value > 0
+    && m.value <= 1000000
+    && m.unit is string
+    && (
+      (
+        m.name.matches('^(Systolic|Diastolic) Blood Pressure$')
+        && m.unit == 'mmHg'
+      )
+      ||
+      (
+        !m.name.matches('^(Systolic|Diastolic) Blood Pressure$')
+        && m.unit == 'mg/dL'
+      )
+    );
+}
+
+
+
+      // Check whether a particular measurement name exists.
+      function hasMarker(items, name) {
+        return (items.size() > 0 && items[0].name == name)
+          || (items.size() > 1 && items[1].name == name)
+          || (items.size() > 2 && items[2].name == name)
+          || (items.size() > 3 && items[3].name == name)
+          || (items.size() > 4 && items[4].name == name)
+          || (items.size() > 5 && items[5].name == name)
+          || (items.size() > 6 && items[6].name == name);
+      }
+
+      // A measurement name must not appear twice.
+
+
+function uniqueMarkerNames(items) {
+  let names = [
+    items[0].name,
+    items.size() > 1 ? items[1].name : '__empty_1__',
+    items.size() > 2 ? items[2].name : '__empty_2__',
+    items.size() > 3 ? items[3].name : '__empty_3__',
+    items.size() > 4 ? items[4].name : '__empty_4__',
+    items.size() > 5 ? items[5].name : '__empty_5__',
+    items.size() > 6 ? items[6].name : '__empty_6__'
+  ];
+
+  return names.toSet().size() == 7;
+}
+
+
+
+      // Systolic and diastolic must be recorded together.
+      function validBloodPressurePair(items) {
+        return hasMarker(items, 'Systolic Blood Pressure')
+          == hasMarker(items, 'Diastolic Blood Pressure');
+      }
+
+
+
+      function validMarkerMeasurements(items) {
+        return items is list
+          && items.size() > 0
+          && items.size() <= 7
+          && validMarkerMeasurement(items[0])
+          && (items.size() < 2 || validMarkerMeasurement(items[1]))
+          && (items.size() < 3 || validMarkerMeasurement(items[2]))
+          && (items.size() < 4 || validMarkerMeasurement(items[3]))
+          && (items.size() < 5 || validMarkerMeasurement(items[4]))
+          && (items.size() < 6 || validMarkerMeasurement(items[5]))
+          && (items.size() < 7 || validMarkerMeasurement(items[6]))
+          && uniqueMarkerNames(items)
+          && validBloodPressurePair(items);
+      }
+
+
+      function validMonthlyMarkers() {
+        let data = request.resource.data;
+
+        return monthId.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+          && data.keys().hasAll(['month', 'measurements'])
+          && data.keys().hasOnly(['month', 'measurements'])
+          && data.month is string
+          && data.month == monthId
+          && validMarkerMeasurements(data.measurements);
+      }
+
+      allow read: if isMarkerOwner();
+
+      allow create, update: if isMarkerOwner()
+        && validMonthlyMarkers();
+
+      allow delete: if isMarkerOwner();
+    }
+
+
+    // NutriGuard food logs
+    match /users/{userId}/foodLogs/{foodLogId} {
+
+      function isFoodLogOwner() {
+        return request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      function validFoodLog() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'foodId',
+            'foodName',
+            'brand',
+            'source',
+            'grams',
+            'mealType',
+            'calories',
+            'protein',
+            'carbs',
+            'fat',
+            'loggedAt'
+          ])
+          && data.keys().hasOnly([
+            'foodId',
+            'foodName',
+            'brand',
+            'source',
+            'grams',
+            'mealType',
+            'calories',
+            'protein',
+            'carbs',
+            'fat',
+            'loggedAt'
+          ])
+
+          // Food identification
+          && data.foodId is string
+          && data.foodId.size() > 0
+          && data.foodId.size() <= 100
+
+          && data.foodName is string
+          && data.foodName.size() > 0
+          && data.foodName.size() <= 200
+
+          // Brand can be null.
+          && (
+            data.brand == null
+            || (
+              data.brand is string
+              && data.brand.size() <= 200
+            )
+          )
+
+          && data.source is string
+          && data.source.size() > 0
+          && data.source.size() <= 100
+
+          // Portion weight in grams
+          && data.grams is number
+          && data.grams > 0
+          && data.grams <= 5000
+
+          // Allowed meal types
+          && data.mealType is string
+          && data.mealType in [
+            'Breakfast',
+            'Lunch',
+            'Dinner',
+            'Snack'
+          ]
+
+          // Nutritional values for the selected portion
+          && data.calories is number
+          && data.calories >= 0
+          && data.calories <= 1000000
+
+          && data.protein is number
+          && data.protein >= 0
+          && data.protein <= 1000000
+
+          && data.carbs is number
+          && data.carbs >= 0
+          && data.carbs <= 1000000
+
+          && data.fat is number
+          && data.fat >= 0
+          && data.fat <= 1000000
+
+          // Firestore timestamp
+          && data.loggedAt is timestamp;
+      }
+
+      // Owners can read their own food logs.
+      allow read: if isFoodLogOwner();
+
+      // Owners can create valid food logs.
+      allow create: if isFoodLogOwner()
+        && validFoodLog();
+
+      // Editing existing logs is not implemented yet.
+      allow update: if false;
+
+      // Owners can delete their own logs.
+      allow delete: if isFoodLogOwner();
+    }
+
+
+    // NutriGuard nutrition goals
+
+    match /users/{userId}/preferences/{preferenceId} {
+
+      function isPreferenceOwner() {
+        return request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      function validNutritionGoal() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'dailyCalorieTarget',
+            'goalType'
+          ])
+          && data.keys().hasOnly([
+            'dailyCalorieTarget',
+            'goalType'
+          ])
+          && data.dailyCalorieTarget is int
+          && data.dailyCalorieTarget >= 1
+          && data.dailyCalorieTarget <= 10000
+          && data.goalType is string
+          && data.goalType in [
+            'Weight Loss',
+            'Maintain Weight',
+            'Weight Gain'
+          ];
+      }
+
+      function validProfilePreferences() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'dietaryRestrictions',
+            'allergies',
+            'unitSystem'
+          ])
+          && data.keys().hasOnly([
+            'dietaryRestrictions',
+            'allergies',
+            'unitSystem'
+          ])
+          && data.dietaryRestrictions is list
+          && data.dietaryRestrictions.size() >= 1
+          && data.dietaryRestrictions.size() <= 5
+          && data.dietaryRestrictions.hasOnly([
+            'Vegetarian',
+            'Vegan',
+            'Halal',
+            'Pescatarian',
+            'None'
+          ])
+          && (
+            !('None' in data.dietaryRestrictions)
+            || data.dietaryRestrictions.size() == 1
+          )
+          && data.allergies is list
+          && data.allergies.size() <= 30
+          && data.unitSystem is string
+          && data.unitSystem in [
+            'Metric',
+            'Imperial'
+          ];
+      }
+
+      function validNotificationPreferences() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'mealReminders',
+            'monthlyHealthMarkerReminders',
+            'aiSuggestionAlerts'
+          ])
+          && data.keys().hasOnly([
+            'mealReminders',
+            'monthlyHealthMarkerReminders',
+            'aiSuggestionAlerts'
+          ])
+          && data.mealReminders is bool
+          && data.monthlyHealthMarkerReminders is bool
+          && data.aiSuggestionAlerts is bool;
+      }
+
+      // Owners can read their own preference documents.
+      allow read: if isPreferenceOwner()
+        && preferenceId in [
+          'nutrition',
+          'profile',
+          'notifications'
+        ];
+
+      // Validate each preference document separately.
+      allow create, update: if isPreferenceOwner()
+        && (
+          (
+            preferenceId == 'nutrition'
+            && validNutritionGoal()
+          )
+          ||
+          (
+            preferenceId == 'profile'
+            && validProfilePreferences()
+          )
+          ||
+          (
+            preferenceId == 'notifications'
+            && validNotificationPreferences()
+          )
+        );
+
+      // Preference documents cannot be deleted from the client.
+      allow delete: if false;
+    }
+
+
+
+    // NutriGuard My Pantry
+    match /users/{userId}/pantryItems/{itemId} {
+
+      function isPantryOwner() {
+        return request.auth != null
+          && request.auth.uid == userId;
+      }
+
+
+      function validPantryItem() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'name',
+            'quantity',
+            'unit',
+            'category',
+            'expiryDate',
+            'createdAt'
+          ])
+          && data.keys().hasOnly([
+            'name',
+            'quantity',
+            'unit',
+            'category',
+            'expiryDate',
+            'createdAt',
+            'lowStockThreshold'
+          ])
+
+          // Ingredient name
+          && data.name is string
+          && data.name.size() > 0
+          && data.name.size() <= 100
+          && data.name.matches('.*[^ ].*')
+
+          // Positive quantity
+          && data.quantity is number
+          && data.quantity > 0
+          && data.quantity <= 1000000
+
+          // Measurement unit
+          && data.unit is string
+          && data.unit.size() > 0
+          && data.unit.size() <= 30
+          && data.unit.matches('.*[^ ].*')
+
+          // Ingredient category
+          && data.category is string
+          && data.category.size() > 0
+          && data.category.size() <= 60
+          && data.category.matches('.*[^ ].*')
+
+          // Optional expiry date
+          && (
+            data.expiryDate == null
+            || data.expiryDate is timestamp
+          )
+
+          // Creation timestamp
+          && data.createdAt is timestamp
+
+          // Optional low-stock threshold
+          && (
+            !data.keys().hasAny(['lowStockThreshold'])
+            || (
+              data.lowStockThreshold is number
+              && data.lowStockThreshold >= 0
+              && data.lowStockThreshold <= 1000000
+            )
+          );
+      }
+
+
+      // Only the authenticated owner can read pantry items.
+      allow read: if isPantryOwner();
+
+      // Only valid pantry items can be created.
+      allow create: if isPantryOwner()
+        && validPantryItem();
+
+      // Allow editing, but keep createdAt unchanged.
+      allow update: if isPantryOwner()
+        && validPantryItem()
+        && request.resource.data.createdAt
+          == resource.data.createdAt;
+
+      // Only the owner can delete pantry items.
+      allow delete: if isPantryOwner();
+    }
+
+
+    // NutriGuard Meal Planner
+    match /users/{userId}/plannedMeals/{mealId} {
+
+      function isMealOwner() {
+        return request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      function validPlannedMeal() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+          'id',
+          'date',
+          'mealType',
+          'recipeId',
+          'servings'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'date',
+          'mealType',
+          'recipeId',
+          'servings'
+        ])
+        && data.id is string
+        && data.id == mealId
+        && data.date is string
+        && data.date.matches(
+          '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+        )
+        && data.mealType is string
+        && data.mealType in [
+          'Breakfast',
+          'Lunch',
+          'Dinner',
+          'Snack'
+        ]
+        && data.recipeId is string
+        && data.recipeId.size() > 0
+        && data.recipeId.size() <= 100
+        && data.recipeId.matches('.*[^ ].*')
+        && data.servings is int
+        && data.servings >= 1
+        && data.servings <= 20;
+      }
+
+      allow read: if isMealOwner();
+
+      allow create, update: if isMealOwner()
+        && validPlannedMeal();
+
+      allow delete: if isMealOwner();
+    }
+
+
+    // NutriGuard Exercise Logs
+    match /users/{userId}/exerciseLogs/{exerciseId} {
+
+      // Only the authenticated account owner has access.
+      function isExerciseOwner() {
+        return request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      // Validate the stored exercise data.
+      function validExerciseLog() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'exerciseName',
+            'exerciseType',
+            'durationMinutes',
+            'isCompleted',
+            'performedAt'
+          ])
+          && data.keys().hasOnly([
+            'exerciseName',
+            'exerciseType',
+            'durationMinutes',
+            'isCompleted',
+            'performedAt'
+          ])
+
+          // Exercise name.
+          && data.exerciseName is string
+          && data.exerciseName.size() > 0
+          && data.exerciseName.size() <= 150
+          && data.exerciseName.matches('.*[^ ].*')
+
+          // Exercise type.
+          && data.exerciseType is string
+          && data.exerciseType.size() > 0
+          && data.exerciseType.size() <= 60
+          && data.exerciseType.matches('.*[^ ].*')
+
+          // Duration in minutes.
+          && data.durationMinutes is int
+          && data.durationMinutes >= 0
+          && data.durationMinutes <= 1440
+
+          // Planned or completed status.
+          && data.isCompleted is bool
+
+          // Firestore timestamp.
+          && data.performedAt is timestamp;
+      }
+
+      // Read only the user's own exercise records.
+      allow read: if isExerciseOwner();
+
+      // Create valid exercise records.
+      allow create: if isExerciseOwner()
+        && validExerciseLog();
+
+      // Update valid exercise records.
+      allow update: if isExerciseOwner()
+        && validExerciseLog();
+
+      // Delete only the user's own exercise records.
+      allow delete: if isExerciseOwner();
+    }
+
+
+    // NutriGuard Weight Tracking
+    match /users/{userId}/weightLogs/{weightLogId} {
+
+      // Only the authenticated user can access
+      // their own weight measurements.
+      function isWeightOwner() {
+        return request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      // Validate the weight measurement document.
+      function validWeightLog() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'weightKg',
+            'measuredAt'
+          ])
+          && data.keys().hasOnly([
+            'weightKg',
+            'measuredAt'
+          ])
+
+          // Weight in kilograms.
+          && data.weightKg is number
+          && data.weightKg >= 2
+          && data.weightKg <= 500
+
+          // The measurement must be a timestamp
+          // and cannot be in the future.
+          && data.measuredAt is timestamp
+          && data.measuredAt <= request.time;
+      }
+
+      // Read own weight records.
+      allow read: if isWeightOwner();
+
+      // Create valid weight measurements.
+      allow create: if isWeightOwner()
+        && validWeightLog();
+
+      // Update valid weight measurements.
+      allow update: if isWeightOwner()
+        && validWeightLog();
+
+      // Delete own weight measurements.
+      allow delete: if isWeightOwner();
+    }
+
+    // NutriGuard Weekly Exercise Plans
+    match /users/{userId}/weeklyExercisePlans/{weekId} {
+
+      function isWeeklyPlanOwner() {
+        return request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      function validExerciseId(id, level) {
+        return id is string
+          && id in [
+            'walking',
+            'gentle_stretching',
+            'chair_exercises',
+            'easy_cycling',
+            'brisk_walking',
+            'bodyweight_exercises',
+            'moderate_cycling',
+            'mobility_routine'
+          ]
+          && (
+            level != 'beginner'
+            || id in [
+              'walking',
+              'gentle_stretching',
+              'chair_exercises',
+              'easy_cycling',
+              'mobility_routine'
+            ]
+          );
+      }
+
+      function validPlanDay(day, expectedWeekday, level) {
+        return day is map
+          && day.keys().hasAll([
+            'weekday',
+            'exerciseId'
+          ])
+          && day.keys().hasOnly([
+            'weekday',
+            'exerciseId'
+          ])
+          && day.weekday == expectedWeekday
+          && (
+            expectedWeekday == 7
+              ? day.exerciseId == null
+              : validExerciseId(day.exerciseId, level)
+          );
+      }
+
+      function validPlanDays(days, level) {
+        return days is list
+          && days.size() == 7
+          && validPlanDay(days[0], 1, level)
+          && validPlanDay(days[1], 2, level)
+          && validPlanDay(days[2], 3, level)
+          && validPlanDay(days[3], 4, level)
+          && validPlanDay(days[4], 5, level)
+          && validPlanDay(days[5], 6, level)
+          && validPlanDay(days[6], 7, level);
+      }
+
+      function validWeeklyPlan() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'weekStart',
+            'goal',
+            'activityLevel',
+            'preference',
+            'days'
+          ])
+          && data.keys().hasOnly([
+            'weekStart',
+            'goal',
+            'activityLevel',
+            'preference',
+            'days'
+          ])
+
+          && weekId.matches(
+            '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+          )
+          && data.weekStart == weekId
+
+          && data.goal in [
+            'generalFitness',
+            'buildConsistency',
+            'improveEndurance',
+            'buildStrength'
+          ]
+
+          && data.activityLevel in [
+            'beginner',
+            'intermediate'
+          ]
+
+          && data.preference in [
+            'any',
+            'cardio',
+            'strength',
+            'flexibility'
+          ]
+
+          && validPlanDays(
+            data.days,
+            data.activityLevel
+          );
+      }
+
+      allow read: if isWeeklyPlanOwner();
+
+      allow create, update: if isWeeklyPlanOwner()
+        && validWeeklyPlan();
+
+      allow delete: if isWeeklyPlanOwner();
+    }
+
+
+
+
+
+  }
+}
